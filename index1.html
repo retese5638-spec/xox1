@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>KUMRU XOX - ELITE LOGIC v3.8</title>
+    
+    <!-- 
+        KUMRU ULTIMATE ENGINE v3.8 (ELITE LOGIC)
+        -------------------------------------------
+        - AI: API gerektirmeyen, matematiksel Heuristic ve Pattern Matching motoru.
+        - UI: Üst skor paneli, Alt-Sağ kontrol grubu, Responsive Drawer sistemi.
+        - MARKET: 10 Oyuncu Exploit'i + 10 AI Malware protokolü.
+        - TEMA: Mod bazlı dinamik font ve CRT efekt yönetimi.
+    -->
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        hackerGreen: '#00ff41',
+                        hackerRed: '#ff003c',
+                        hackerPurple: '#bc00ff',
+                        standardBlue: '#3b82f6',
+                        darkBg: '#010101',
+                    },
+                    animation: {
+                        'glitch': 'glitch 0.3s infinite',
+                        'scanline': 'scan 10s linear infinite',
+                        'flicker': 'flicker 0.2s infinite alternate',
+                        'pulse-fast': 'pulse 0.7s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    },
+                    keyframes: {
+                        glitch: {
+                            '0%, 100%': { transform: 'translate(0)' },
+                            '33%': { transform: 'translate(-2px, 1px)' },
+                            '66%': { transform: 'translate(2px, -1px)' },
+                        },
+                        scan: { '0%': { top: '0%' }, '100%': { top: '100%' } },
+                        flicker: { '0%, 100%': { opacity: '1' }, '50%': { opacity: '0.85' } }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* CSS DEĞİŞKENLERİ VE CORE SİSTEM */
+        :root {
+            --font-std: ui-sans-serif, system-ui, -apple-system, sans-serif;
+            --font-hacker: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+        }
+
+        * { -webkit-tap-highlight-color: transparent; outline: none; box-sizing: border-box; }
+        
+        body { 
+            background-color: #000; 
+            color: #fff; 
+            font-family: var(--font-std);
+            overflow: hidden; 
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            user-select: none;
+        }
+
+        /* HACKER UI AKTİF OLDUĞUNDA */
+        .hacker-ui { font-family: var(--font-hacker) !important; }
+
+        /* CRT SCANLINE KATMANI */
+        .crt-active::after {
+            content: " "; display: block; position: absolute; top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.05) 50%), 
+                        linear-gradient(90deg, rgba(255, 0, 0, 0.02), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.02));
+            z-index: 200; background-size: 100% 4px, 4px 100%; pointer-events: none;
+        }
+
+        /* BOARD GRID MİMARİSİ */
+        .board-grid { 
+            display: grid; 
+            background: #050505;
+            box-shadow: inset 0 0 60px rgba(0,0,0,1);
+            width: 100%;
+            height: 100%;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .cell {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid rgba(255, 255, 255, 0.03);
+            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            cursor: pointer;
+        }
+
+        .cell:active:not(.occupied) { transform: scale(0.92); background: rgba(255,255,255,0.05); }
+
+        .token-x { color: #3b82f6; text-shadow: 0 0 15px rgba(59,130,246,0.6); font-weight: 900; }
+        .token-o { color: #ff003c; text-shadow: 0 0 15px rgba(255,0,60,0.6); font-weight: 900; }
+
+        /* SIDEBAR / DRAWER MİMARİSİ */
+        .side-panel {
+            position: absolute !important;
+            top: 0; bottom: 0;
+            width: 280px;
+            z-index: 500;
+            background: rgba(5, 5, 5, 0.98);
+            backdrop-blur: 25px;
+            transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s;
+            display: none; /* JS aracılığıyla kontrol edilir */
+        }
+        
+        #sidebar-l { left: 0; transform: translateX(-100%); border-right: 1px solid rgba(255,255,255,0.1); }
+        #sidebar-r { right: 0; transform: translateX(100%); border-left: 1px solid rgba(255,255,255,0.1); }
+        
+        .side-panel.open { transform: translateX(0) !important; display: flex !important; }
+
+        @media (min-width: 1280px) {
+            .side-panel { position: relative !important; display: flex !important; transform: translateX(0) !important; background: transparent; }
+        }
+
+        #board-stage {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 10px;
+            overflow: hidden;
+            z-index: 10;
+        }
+
+        #board-scaler {
+            width: 100%;
+            max-width: min(90vw, 70vh);
+            aspect-ratio: 1/1;
+            position: relative;
+        }
+
+        ::-webkit-scrollbar { width: 3px; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
+
+        .market-item {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: all 0.3s ease;
+        }
+        .market-item:hover:not(.locked) {
+            background: rgba(188, 0, 255, 0.1);
+            border-color: #bc00ff;
+            transform: translateY(-2px);
+        }
+    </style>
+</head>
+<body id="app-root">
+
+    <div id="fx-scan" class="hidden fixed inset-0 z-[250] pointer-events-none animate-scanline bg-white/[0.01]"></div>
+
+    <!-- ÜST HEADER: SKORLAR VE JETON -->
+    <header class="z-[400] w-full flex items-center justify-between p-3 md:p-4 bg-black border-b border-white/10 shadow-2xl backdrop-blur-md">
+        <div class="flex items-center gap-3">
+            <div id="status-lamp" class="w-2.5 h-2.5 rounded-full bg-blue-500 shadow-[0_0_10px_#3b82f6] animate-pulse"></div>
+            <div class="hidden sm:block">
+                <h1 id="title-core" class="text-base md:text-lg font-black tracking-tighter uppercase italic leading-none">
+                    KUMRU <span id="mode-text" class="text-blue-500">ENGINE</span>
+                </h1>
+            </div>
+        </div>
+
+        <!-- MERKEZ: SKOR TABLOSU (İstediğin Yerleşim) -->
+        <div class="flex items-center gap-2 md:gap-6 bg-white/5 px-5 py-2 rounded-2xl border border-white/10 shadow-inner">
+            <div class="flex flex-col items-center">
+                <span class="text-[6px] md:text-[8px] uppercase tracking-widest text-gray-500 font-black">Victory</span>
+                <span id="score-win" class="text-green-500 font-black text-sm md:text-xl leading-none">0</span>
+            </div>
+            <div class="w-[1px] h-8 bg-white/10 mx-1 md:mx-2"></div>
+            <div class="flex flex-col items-center">
+                <span class="text-[6px] md:text-[8px] uppercase tracking-widest text-gray-500 font-black">Loss</span>
+                <span id="score-loss" class="text-red-500 font-black text-sm md:text-xl leading-none">0</span>
+            </div>
+            <div class="w-[1px] h-8 bg-white/10 mx-1 md:mx-2"></div>
+            <div class="flex items-center gap-2">
+                <div class="flex flex-col items-center">
+                    <span class="text-[6px] md:text-[8px] uppercase tracking-widest text-gray-500 font-black">Balance</span>
+                    <span id="score-coins" class="text-yellow-500 font-black text-sm md:text-xl leading-none font-mono">500</span>
+                </div>
+                <i data-lucide="database" class="w-3 h-3 text-yellow-600 hidden md:block"></i>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+            <!-- Karakter Seçici -->
+            <div class="flex bg-gray-900 rounded-lg p-0.5 border border-white/5 mr-1 md:mr-3">
+                <button onclick="setToken('X')" id="btn-token-X" class="px-3 md:px-5 py-1.5 rounded-lg bg-blue-600 text-[10px] font-black transition-all shadow-md">X</button>
+                <button onclick="setToken('O')" id="btn-token-O" class="px-3 md:px-5 py-1.5 rounded-lg text-[10px] font-black transition-all ml-0.5">O</button>
+            </div>
+            <!-- Mobil Drawer Butonları -->
+            <div class="flex gap-1.5">
+                <button onclick="toggleSide('sidebar-l')" class="p-2 bg-gray-900 border border-white/10 rounded-lg text-hackerGreen transition hover:bg-hackerGreen/20" title="Terminal"><i data-lucide="terminal" class="w-4 h-4 md:w-5 md:h-5"></i></button>
+                <button onclick="toggleSide('sidebar-r')" class="p-2 bg-gray-900 border border-white/10 rounded-lg text-hackerPurple transition hover:bg-hackerPurple/20" title="Market"><i data-lucide="shopping-cart" class="w-4 h-4 md:w-5 md:h-5"></i></button>
+            </div>
+        </div>
+    </header>
+
+    <!-- ANA İÇERİK -->
+    <main class="flex-1 flex overflow-hidden relative">
+        
+        <!-- SOL SIDEBAR: LOGS (Drawer) -->
+        <aside id="sidebar-l" class="side-panel flex-col p-6 overflow-hidden shadow-2xl">
+            <div class="flex items-center justify-between mb-4 border-b border-white/10 pb-2">
+                <span class="text-[10px] font-mono text-hackerGreen uppercase font-black tracking-widest">>_ SYSTEM_MONITOR</span>
+                <button onclick="toggleSide('sidebar-l')" class="lg:hidden text-gray-500"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <div id="log-mount" class="flex-1 overflow-y-auto custom-scrollbar space-y-1.5 font-mono text-[10px] text-gray-400">
+                <!-- Loglar JS -->
+            </div>
+        </aside>
+
+        <!-- MERKEZ: OYUN TAHTASI -->
+        <section id="board-stage">
+            <div class="flex flex-col items-center gap-4 w-full h-full justify-center">
+                
+                <!-- Durum Bannerı (Maç Sonu Overlay yerine) -->
+                <div id="ui-match-status" class="w-full max-w-sm flex flex-col items-center transition-all duration-700">
+                    <div id="status-banner" class="w-full bg-gray-900/60 border border-white/10 py-3 px-6 rounded-2xl text-center backdrop-blur-md shadow-2xl ring-1 ring-white/5">
+                        <span id="status-text" class="text-xs md:text-sm font-black uppercase tracking-[0.2em] text-gray-400 italic">Sistem Hazırlanıyor...</span>
+                    </div>
+                </div>
+
+                <!-- Tahta Scaler -->
+                <div id="board-scaler">
+                    <div id="ui-frame" class="w-full h-full bg-gray-950 p-1 md:p-2 rounded-[38px] md:rounded-[52px] border border-white/10 shadow-[0_30px_120px_rgba(0,0,0,1)] relative overflow-hidden ring-1 ring-white/5 transition-all duration-1000">
+                        <div id="grid-mount" class="board-grid rounded-[32px] md:rounded-[42px] overflow-hidden">
+                            <!-- Grid JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tur Bilgisi -->
+                <div id="ui-turn-card" class="flex items-center gap-8 bg-gray-900/40 border border-white/5 px-8 py-2 rounded-full backdrop-blur-md opacity-60 scale-90">
+                    <div id="node-p" class="flex items-center gap-2 transition-all opacity-100"><i data-lucide="user" class="w-4 h-4 text-blue-400"></i><span class="text-[9px] font-black uppercase tracking-widest text-blue-400">Player</span></div>
+                    <div class="w-[1px] h-3 bg-white/10"></div>
+                    <div id="node-a" class="flex items-center gap-2 transition-all opacity-30"><span class="text-[9px] font-black uppercase tracking-widest text-hackerRed">Kumru</span><i data-lucide="cpu" class="w-4 h-4 text-hackerRed"></i></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SAĞ SIDEBAR: MARKET & EXPLOITS (Drawer) -->
+        <aside id="sidebar-r" class="side-panel flex-col p-6 overflow-hidden shadow-2xl">
+            <div class="flex items-center justify-between mb-4 border-b border-purple-500/20 pb-2">
+                <h2 class="text-[10px] font-black text-purple-500 uppercase tracking-[0.3em] italic flex items-center gap-2">
+                    <i data-lucide="zap" class="w-4 h-4"></i> EXPLOIT_DATABASE
+                </h2>
+                <button onclick="toggleSide('sidebar-r')" class="lg:hidden text-gray-500"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <div id="cheat-mount" class="flex-1 overflow-y-auto custom-scrollbar space-y-3 pr-1">
+                <!-- Market Ürünleri JS -->
+            </div>
+            <div class="mt-4 p-4 bg-purple-900/10 border border-purple-500/20 rounded-2xl text-[8px] text-purple-400 font-mono italic uppercase tracking-tighter">
+                Root Erişimi: Bekleniyor... Exploitleri çalıştırmak için maç kazanarak Kredi (Cr) topla.
+            </div>
+        </aside>
+
+    </main>
+
+    <!-- ALT KONTROLLER (FOOTER) -->
+    <footer class="p-4 md:p-6 bg-black border-t border-white/5 flex flex-wrap items-center justify-between gap-4 z-[450] shadow-[0_-20px_50px_rgba(0,0,0,0.5)]">
+        
+        <!-- SOL: BOYUT AYARI -->
+        <div class="flex items-center bg-gray-900/90 p-1.5 rounded-xl border border-white/10 shadow-xl ring-1 ring-white/5 transition-all hover:ring-blue-500/30">
+            <span class="hidden md:block text-[10px] text-gray-500 uppercase px-4 font-black border-r border-white/10 tracking-widest">Dim</span>
+            <select id="sel-grid-size" onchange="resetGame(this.value)" class="bg-transparent text-white text-[10px] font-black rounded-xl p-1.5 outline-none cursor-pointer px-3">
+                <option value="3">3x3</option><option value="4">4x4</option><option value="5">5x5</option>
+                <option value="6" selected>6x6</option><option value="8">8x8</option><option value="10">10x10</option>
+                <option value="15">15x15</option><option value="20">20x20</option>
+            </select>
+        </div>
+
+        <!-- SAĞ: ZORLUK, L.BOARD VE RESET (İstediğin Grup) -->
+        <div class="flex items-center gap-2 md:gap-5 ml-auto">
+            <!-- Zorluk Seviyesi -->
+            <div class="relative group">
+                <select id="sel-difficulty" onchange="changeDifficulty(this.value)" class="bg-gray-900 text-white text-[10px] md:text-[11px] font-black uppercase rounded-xl px-10 md:px-12 py-3.5 border border-white/10 outline-none appearance-none cursor-pointer hover:border-blue-500 transition-all shadow-xl ring-1 ring-white/5">
+                    <option value="Kolay">Kolay</option><option value="Orta">Orta</option>
+                    <option value="Zor">Zor</option><option value="İmkansız">İmkansız</option>
+                    <option value="Kumru" selected>Kumru Protokolü</option>
+                    <option value="Hileli">HİLELİ MOD 😈</option>
+                </select>
+                <i data-lucide="shield" class="w-3.5 h-3.5 md:w-4 md:h-4 text-blue-500 absolute left-3 md:left-4 top-1/2 -translate-y-1/2 pointer-events-none group-hover:scale-125 transition-transform"></i>
+            </div>
+
+            <!-- Leaderboard -->
+            <button onclick="toggleRanks()" class="p-3 bg-gray-900 border border-white/10 rounded-xl text-white hover:text-blue-400 transition-all shadow-xl active:scale-90" title="Sıralama">
+                <i data-lucide="award" class="w-5 h-5"></i>
+            </button>
+            
+            <!-- YENİDEN BAŞLAT (İstediğin Yerleşim) -->
+            <button onclick="resetGame()" class="flex items-center gap-3 px-6 md:px-8 py-3.5 bg-white text-black font-black uppercase rounded-2xl hover:bg-blue-600 hover:text-white transition-all transform active:scale-90 group shadow-2xl ring-1 ring-white/5">
+                <i data-lucide="refresh-cw" id="reset-ico" class="w-4 h-4 md:w-5 md:h-5 transition-transform duration-500 group-hover:rotate-180"></i>
+                <span class="text-[10px] font-black uppercase tracking-widest hidden sm:block leading-none">Yeniden Başlat</span>
+            </button>
+        </div>
+    </footer>
+
+    <!-- RANK MODALI -->
+    <div id="modal-ranks" class="hidden fixed inset-0 z-[600] bg-black/98 backdrop-blur-3xl flex items-center justify-center p-4 transition-all duration-500" onclick="toggleRanks()">
+        <div class="bg-gray-900 border border-white/10 p-10 md:p-14 rounded-[50px] w-full max-w-md shadow-2xl relative overflow-hidden" onclick="event.stopPropagation()">
+            <button onclick="toggleRanks()" class="absolute top-8 right-8 text-gray-500 hover:text-white transition transform hover:rotate-90"><i data-lucide="x-circle" class="w-10 h-10"></i></button>
+            <h2 class="text-2xl md:text-3xl font-black italic text-center mb-10 uppercase tracking-widest underline decoration-blue-500 decoration-4 underline-offset-[10px]">HALL_OF_FAME</h2>
+            
+            <div class="flex items-center justify-between bg-blue-500/10 p-5 rounded-[28px] border border-blue-500/30 mb-8 shadow-xl">
+                <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-2xl bg-blue-500 flex items-center justify-center text-white font-black shadow-lg">U</div>
+                    <span class="text-[10px] font-black text-blue-300 uppercase tracking-widest">Puanın</span>
+                </div>
+                <span id="lb-player-val" class="font-mono font-black text-2xl text-white">0</span>
+            </div>
+            <div id="rank-list" class="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar"></div>
+        </div>
+    </div>
+
+    <!-- JAVASCRIPT MASTER CORE -->
+    <script>
+        /**
+         * --- SİSTEM PARAMETRELERİ & HİLELER ---
+         */
+        const ENGINE = {
+            WIN_SEQ: 3, 
+            START_BAL: 500,
+            LOCAL_KEY: 'KUMRU_TITAN_V38_CORE',
+            EXPLOITS: [
+                { id: 'steal', name: 'NODE_STEAL', cost: 150, icon: 'hand-metal', desc: 'Düşman hücresini çal.' },
+                { id: 'freeze', name: 'AI_FREEZE', cost: 400, icon: 'lock', desc: 'AI 3 tur dondurulur.' },
+                { id: 'multi', name: 'BURST_THREAD', cost: 200, icon: 'zap', desc: 'Aynı turda tekrar oyna.' },
+                { id: 'override', name: 'LOGIC_OVERRIDE', cost: 600, icon: 'award', desc: 'Galibiyet hamlesi uygula.' },
+                { id: 'seg_wipe', name: 'ROW_KILLER', cost: 300, icon: 'minus', desc: 'Rastgele bir satırı sil.' },
+                { id: 'seg_col', name: 'COL_KILLER', cost: 300, icon: 'more-vertical', desc: 'Rastgele bir sütunu sil.' },
+                { id: 'area_wipe', name: 'AREA_BLAST', cost: 500, icon: 'explosion', desc: '3x3 alanı temizle.' },
+                { id: 'invisible', name: 'CLOAK_MODE', cost: 250, icon: 'eye-off', desc: 'Koyduğun taşı AI göremez.' },
+                { id: 'entropy', name: 'ENTROPY', cost: 450, icon: 'refresh-cw', desc: 'Tüm tahtayı karıştır.' },
+                { id: 'inject', name: 'SQL_INJECT', cost: 0, icon: 'terminal', desc: '+1000 Kredi kazan.' }
+            ],
+            AI_MALWARE: ['STEAL_X', 'SKIP_X', 'DOUBLE_O', 'SHUFFLE', 'GHOST_O', 'SYS_FAIL', 'FAKE_WIN', 'LOG_LOCK', 'CREDIT_LEAK', 'RESET_GRID']
+        };
+
+        /**
+         * --- DURUM YÖNETİMİ ---
+         */
+        let state = {
+            size: 6, difficulty: 'Kumru', board: [], pToken: 'X', aToken: 'O',
+            isPTurn: true, isThink: false, winnerData: null,
+            coins: ENGINE.START_BAL, stats: { wins: 0, losses: 0 },
+            aiLock: 0, score: 0, ghostActive: false,
+            ranks: [{name: "Admin_Kumru", score: 1250000}, {name: "Neo_Hax", score: 620000}, {name: "Zero_Day", score: 345000}]
+        };
+
+        /**
+         * --- BAŞLATMA ---
+         */
+        function boot() {
+            const saved = localStorage.getItem(ENGINE.LOCAL_KEY);
+            if (saved) {
+                try {
+                    const data = JSON.parse(saved);
+                    state.coins = data.coins || ENGINE.START_BAL;
+                    state.stats = data.stats || state.stats;
+                    state.score = data.score || 0;
+                } catch(e) {}
+            }
+            resetGame(state.size);
+            lucide.createIcons();
+            logKernel("Kumru Titan Engine v3.8 Hazır. Heuristic AI Aktif.");
+        }
+
+        function save() {
+            localStorage.setItem(ENGINE.LOCAL_KEY, JSON.stringify({ 
+                coins: state.coins, stats: state.stats, score: state.score 
+            }));
+        }
+
+        /**
+         * --- RENDER ENGINE ---
+         */
+        function renderAll() {
+            renderBoard();
+            renderStatsUI();
+            updateModeTheme();
+            save();
+        }
+
+        function renderBoard() {
+            const grid = document.getElementById('grid-mount');
+            if (!grid) return;
+            const size = state.size;
+            grid.style.gridTemplateColumns = `repeat(${size}, 1fr)`;
+            grid.innerHTML = '';
+            const fs = size > 15 ? 'text-[7px]' : size > 10 ? 'text-[10px]' : 'text-3xl';
+
+            state.board.forEach((cell, idx) => {
+                const cellEl = document.createElement('div');
+                cellEl.className = `cell ${fs} font-black`;
+                const x = idx%size; const y = Math.floor(idx/size);
+                cellEl.style.backgroundColor = (x+y)%2 === 0 ? '#000' : '#050505';
+
+                if (cell) {
+                    cellEl.classList.add('occupied');
+                    cellEl.innerText = cell;
+                    cellEl.classList.add(cell === state.pToken ? 'token-x' : 'token-o');
+                    if (state.winnerData?.line.includes(idx)) cellEl.classList.add('bg-white/10', 'animate-pulse-fast');
+                }
+                cellEl.onclick = () => onCellAction(idx);
+                grid.appendChild(cellEl);
+            });
+        }
+
+        function renderStatsUI() {
+            document.getElementById('score-win').innerText = state.stats.wins;
+            document.getElementById('score-loss').innerText = state.stats.losses;
+            document.getElementById('score-coins').innerText = state.coins;
+        }
+
+        function updateModeTheme() {
+            const isH = state.difficulty === 'Hileli';
+            const root = document.getElementById('app-root');
+            const scan = document.getElementById('fx-scan');
+            const bulb = document.getElementById('status-lamp');
+            const label = document.getElementById('mode-text');
+            const frame = document.getElementById('ui-frame');
+
+            if (isH) {
+                root.classList.add('hacker-ui', 'crt-active');
+                if(scan) scan.classList.remove('hidden');
+                bulb.className = "w-3 h-3 rounded-full bg-purple-500 shadow-[0_0_15px_#bc00ff] animate-pulse";
+                label.innerText = "HACKED"; label.className = "text-purple-500 animate-glitch";
+                frame.style.borderColor = "rgba(188, 0, 255, 0.4)";
+                renderMarketItems();
+            } else {
+                root.classList.remove('hacker-ui', 'crt-active');
+                if(scan) scan.classList.add('hidden');
+                bulb.className = "w-3 h-3 rounded-full bg-blue-500 shadow-[0_0_10px_#3b82f6]";
+                label.innerText = "ENGINE"; label.className = "text-blue-500";
+                frame.style.borderColor = "rgba(255, 255, 255, 0.1)";
+            }
+
+            const np = document.getElementById('node-p'); const na = document.getElementById('node-a');
+            if (state.isPTurn) { np.style.opacity = "1"; na.style.opacity = "0.3"; np.classList.add('scale-110'); na.classList.remove('scale-110'); }
+            else { np.style.opacity = "0.3"; na.style.opacity = "1"; na.classList.add('scale-110'); np.classList.remove('scale-110'); }
+        }
+
+        function renderMarketItems() {
+            const cont = document.getElementById('cheat-mount');
+            if(!cont) return; cont.innerHTML = '';
+            ENGINE.EXPLOITS.forEach(h => {
+                const can = state.coins >= h.cost || h.id === 'inject';
+                const card = document.createElement('div');
+                card.className = `market-item p-3 rounded-2xl cursor-pointer shadow-lg ${!can ? 'opacity-30 grayscale cursor-not-allowed locked' : ''}`;
+                card.innerHTML = `
+                    <div class="flex justify-between items-center mb-1">
+                        <div class="p-2 bg-black rounded-xl text-purple-400 group-hover:scale-110 transition-transform shadow-inner"><i data-lucide="${h.icon}" class="w-4 h-4"></i></div>
+                        <span class="text-[9px] font-black text-yellow-500 font-mono tracking-tighter">${h.cost} CR</span>
+                    </div>
+                    <p class="text-[10px] font-black uppercase text-white leading-none">${h.name}</p>
+                    <p class="text-[7px] text-gray-500 mt-1 uppercase font-mono">${h.desc}</p>
+                `;
+                card.onclick = () => runExploit(h);
+                cont.appendChild(card);
+            });
+            lucide.createIcons({ root: cont });
+        }
+
+        /**
+         * --- OYUN AKIŞI VE AI MANTIĞI ---
+         */
+        function onCellAction(idx) {
+            if (state.winnerData || !state.isPTurn || state.isThink) return;
+            const isH = state.difficulty === 'Hileli';
+            if (state.board[idx] === state.pToken) return;
+            if (state.board[idx] === state.aToken && !isH) return;
+
+            if (state.board[idx] === state.aToken) logKernel("X_OVERWRITE: Düşman hücresi çalındı!", "cheat");
+            state.board[idx] = state.pToken;
+            
+            const res = checkWin(state.board);
+            if (res) terminateMatch(res);
+            else { state.isPTurn = false; executeAiTurn(); }
+            updateStatusText(state.isPTurn ? "Sıra Sende" : "Kumru Analiz Ediyor...", state.isPTurn ? "player" : "ai");
+            renderAll();
+        }
+
+        function executeAiTurn() {
+            if (state.aiLock > 0) {
+                state.aiLock--; logKernel(`AI Locked. T-${state.aiLock}`, "cheat");
+                state.isPTurn = true; renderAll(); updateStatusText("Sıra Sende", "player"); return;
+            }
+            state.isThink = true; renderAll();
+            const delay = (state.difficulty === 'Kumru' || state.difficulty === 'Hileli') ? 450 : 250;
+            setTimeout(() => {
+                const move = getTitanAiMove();
+                if (move !== null) {
+                    if (state.difficulty === 'Hileli' && Math.random() < 0.22) injectMalware();
+                    else state.board[move] = state.aToken;
+                }
+                state.isThink = false; state.isPTurn = true;
+                const res = checkWin(state.board);
+                if (res) terminateMatch(res);
+                else updateStatusText("Sıra Sende", "player");
+                renderAll();
+            }, delay);
+        }
+
+        /**
+         * --- TITAN AI MOTORU (PATTER-HEURISTIC) ---
+         */
+        function getTitanAiMove() {
+            const b = state.board; const empty = [];
+            for(let i=0; i<b.length; i++) {
+                if(!b[i]) empty.push(i);
+                else if(state.difficulty === 'Hileli' && b[i] === state.pToken) empty.push(i);
+            }
+            if (empty.length === 0) return null;
+
+            // ZORLUK ÖLÇEĞİ
+            const err = state.difficulty === 'Kolay' ? 0.6 : state.difficulty === 'Orta' ? 0.2 : 0;
+            if (Math.random() < err) return empty[Math.floor(Math.random() * empty.length)];
+
+            // 1. Kendi Kazanma Şansım
+            for (let i of empty) {
+                let t = [...b]; t[i] = state.aToken;
+                if (checkWin(t)?.winner === state.aToken) return i;
+            }
+            // 2. Rakibin Kazanmasını Engelle
+            for (let i of empty) {
+                let t = [...b]; t[i] = state.pToken;
+                if (checkWin(t)?.winner === state.pToken) return i;
+            }
+
+            // 3. Stratejik Heuristic Puanlama
+            let bestVal = -Infinity; let moves = [];
+            const pool = state.size > 8 ? getActionRadius(b, empty) : empty;
+
+            for (let idx of pool) {
+                let s = evaluateTitanPosition(b, idx, state.aToken);
+                if (s > bestVal) { bestVal = s; moves = [idx]; }
+                else if (s === bestVal) moves.push(idx);
+            }
+            return moves[Math.floor(Math.random() * moves.length)];
+        }
+
+        function getActionRadius(board, empty) {
+            const size = state.size; const radius = new Set();
+            for(let i=0; i<board.length; i++) {
+                if(board[i]) {
+                    const r = Math.floor(i/size); const c = i%size;
+                    for(let dr=-2; dr<=2; dr++) for(let dc=-2; dc<=2; dc++) {
+                        const nr = r+dr; const nc = c+dc;
+                        if(nr>=0 && nr<size && nc>=0 && nc<size) {
+                            const nIdx = nr*size+nc;
+                            if(!board[nIdx]) radius.add(nIdx);
+                        }
+                    }
+                }
+            }
+            return radius.size > 0 ? Array.from(radius) : empty;
+        }
+
+        function evaluateTitanPosition(b, idx, tok) {
+            const s = state.size; const x = idx%s; const y = Math.floor(idx/s);
+            const opp = tok === 'X' ? 'O' : 'X';
+            const dirs = [{dx:1,dy:0},{dx:0,dy:1},{dx:1,dy:1},{dx:1,dy:-1}];
+            let score = 0;
+
+            for (const d of dirs) {
+                for (let off = 0; off < 3; off++) {
+                    let ok = true, mine = 0, enemy = 0;
+                    for (let i = 0; i < 3; i++) {
+                        const nx = x + d.dx*(i-off), ny = y + d.dy*(i-off);
+                        if (nx < 0 || nx >= s || ny < 0 || ny >= s) { ok = false; break; }
+                        const cur = (ny*s+nx === idx) ? tok : b[ny*s+nx];
+                        if (cur === tok) mine++; else if (cur === opp) enemy++;
+                    }
+                    if (ok) {
+                        if (enemy === 0) { // Saldırı Planı
+                            if (mine === 3) score += 1000000;
+                            else if (mine === 2) score += 15000; // Çatal potansiyeli
+                            else score += 100;
+                        }
+                        if (mine === 0) { // Savunma Planı
+                            if (enemy === 2) score += 50000; // Kritik blok
+                            else score += 800;
+                        }
+                    }
+                }
+            }
+            // Pozisyonel Ağırlık (Merkez yakını)
+            const mid = (s - 1) / 2;
+            const dist = Math.sqrt(Math.pow(x - mid, 2) + Math.pow(y - mid, 2));
+            return score + (s - dist);
+        }
+
+        function checkWin(b) {
+            const s = state.size;
+            const dirs = [{dx:1,dy:0},{dx:0,dy:1},{dx:1,dy:1},{dx:1,dy:-1}];
+            for (let i = 0; i < b.length; i++) {
+                if (!b[i]) continue;
+                const t = b[i]; const x = i % s, y = Math.floor(i / s);
+                for (const d of dirs) {
+                    let line = [i];
+                    for (let j = 1; j < 3; j++) {
+                        const nx = x + d.dx * j, ny = y + d.dy * j;
+                        if (nx < 0 || nx >= s || ny < 0 || ny >= s || b[ny * s + nx] !== t) break;
+                        line.push(ny * s + nx);
+                    }
+                    if (line.length === 3) return { winner: t, line };
+                }
+            }
+            return b.includes(null) ? null : { winner: 'Draw', line: [] };
+        }
+
+        /**
+         * --- HİLE VE EXPLOIT SİSTEMLERİ ---
+         */
+        function runExploit(ex) {
+            if (state.coins < ex.cost && ex.id !== 'inject') { logKernel("HATA: Yetersiz Kredi.", "ai"); return; }
+            if (state.winnerData || !state.isPTurn) return;
+            state.coins -= ex.cost; logKernel(`EXECUTED: ${ex.name}`, "cheat");
+            switch(ex.id) {
+                case 'inject': state.coins += 1000; break;
+                case 'freeze': state.aiLock = 3; break;
+                case 'multi': state.isPTurn = true; break;
+                case 'nuke': state.board = state.board.map(c => c === state.aToken ? null : c); break;
+                case 'seg_wipe':
+                    const r = Math.floor(Math.random()*state.size);
+                    for(let i=0; i<state.size; i++) state.board[r*state.size+i] = null;
+                    break;
+                case 'seg_col':
+                    const c = Math.floor(Math.random()*state.size);
+                    for(let i=0; i<state.size; i++) state.board[i*state.size+c] = null;
+                    break;
+                case 'area_wipe':
+                    const randIdx = Math.floor(Math.random()*state.board.length);
+                    const s = state.size; const x = randIdx%s, y = Math.floor(randIdx/s);
+                    for(let dy=-1; dy<=1; dy++) for(let dx=-1; dx<=1; dx++) {
+                        const nx = x+dx, ny = y+dy;
+                        if(nx>=0 && nx<s && ny>=0 && ny<s) state.board[ny*s+nx] = null;
+                    }
+                    break;
+                case 'entropy': state.board = state.board.sort(() => Math.random() - 0.5); break;
+                case 'override':
+                    for(let i=0; i<state.board.length; i++) {
+                        if(!state.board[i]) {
+                            let temp = [...state.board]; temp[i] = state.pToken;
+                            if(checkWin(temp)?.winner === state.pToken) { state.board[i] = state.pToken; break; }
+                        }
+                    }
+                    break;
+            }
+            renderAll();
+        }
+
+        function injectMalware() {
+            const malware = ENGINE.AI_MALWARE[Math.floor(Math.random() * ENGINE.AI_MALWARE.length)];
+            logKernel(`CRITICAL: AI_Malware [${malware}]`, "ai");
+            switch(malware) {
+                case 'STEAL_X':
+                    const xs = state.board.map((c, i) => c === state.pToken ? i : null).filter(v => v !== null);
+                    if (xs.length > 0) state.board[xs[Math.floor(Math.random() * xs.length)]] = state.aToken;
+                    break;
+                case 'DOUBLE_O':
+                    state.board[getTitanAiMove()] = state.aToken; state.board[getTitanAiMove()] = state.aToken;
+                    break;
+                case 'SKIP_X': state.isPTurn = false; executeAiSequence(); break;
+                case 'RESET_GRID': state.board = Array(state.size*state.size).fill(null); break;
+                default: state.board[getTitanAiMove()] = state.aToken;
+            }
+        }
+
+        /**
+         * --- ADMIN & UTILS ---
+         */
+        function terminateMatch(res) {
+            state.winnerData = res;
+            const banner = document.getElementById('status-banner');
+            const txt = document.getElementById('status-text');
+            if (res.winner === state.pToken) {
+                state.stats.wins++; state.coins += 500; state.score += 5000;
+                txt.innerText = "KAZANDIN - BÖLGE ELE GEÇİRİLDİ";
+                banner.className = "w-full bg-green-500 border border-green-400 py-3 px-6 rounded-2xl shadow-[0_0_40px_rgba(34,197,94,0.5)] animate-pulse text-white";
+            } else if (res.winner === state.aToken) {
+                state.stats.losses++;
+                txt.innerText = "KAYBETTİN - SİSTEM ÇÖKTÜ";
+                banner.className = "w-full bg-red-600 border border-red-500 py-3 px-6 rounded-2xl shadow-[0_0_40px_rgba(239,68,68,0.5)] animate-pulse text-white";
+            } else {
+                txt.innerText = "BERABERE - VERİ DENGELENDİ";
+                banner.className = "w-full bg-gray-700 border border-gray-600 py-3 px-6 rounded-2xl text-white";
+            }
+            logKernel(`Maç Bitti: ${res.winner}`);
+            save();
+        }
+
+        function resetGame(newSize = state.size) {
+            state.size = parseInt(newSize);
+            state.board = Array(state.size * state.size).fill(null);
+            state.winnerData = null; state.isPTurn = true; state.aiLock = 0; state.isThink = false;
+            const banner = document.getElementById('status-banner');
+            banner.className = "w-full bg-gray-900/60 border border-white/10 py-3 px-6 rounded-2xl text-center backdrop-blur-md shadow-xl";
+            updateStatusText("Sıra Sende", "player");
+            const rIcon = document.getElementById('reset-ico');
+            if(rIcon) { rIcon.classList.add('rotate-180'); setTimeout(() => rIcon.classList.remove('rotate-180'), 500); }
+            renderAll();
+        }
+
+        function changeDifficulty(lvl) { state.difficulty = lvl; logKernel(`Logic Shift: ${lvl}`); resetGame(); }
+        function setToken(t) { 
+            state.pToken = t; state.aToken = t === 'X' ? 'O' : 'X'; 
+            document.getElementById('btn-token-X').classList.toggle('bg-blue-600', t==='X');
+            document.getElementById('btn-token-O').classList.toggle('bg-blue-600', t==='O');
+            resetGame(); 
+        }
+        function updateStatusText(msg, type) {
+            const txt = document.getElementById('status-text'); if(!txt) return;
+            txt.innerText = msg;
+            txt.className = `text-xs md:text-sm font-black uppercase tracking-[0.2em] italic ${type==='ai'?'text-hackerRed':type==='player'?'text-blue-400':'text-white'}`;
+        }
+        function toggleSide(id) { document.getElementById(id).classList.toggle('open'); }
+        function logKernel(msg, type="system") { 
+            const c = document.getElementById('log-mount'); if(!c) return; 
+            const l = document.createElement('div'); l.className=`log-entry log-${type}`; l.innerText=`[${new Date().toLocaleTimeString()}] ${msg}`; c.prepend(l); 
+        }
+        function toggleRanks() {
+            const m = document.getElementById('modal-ranks');
+            if(m.classList.contains('hidden')) {
+                const list = document.getElementById('rank-list'); list.innerHTML = '';
+                const curScore = state.score + (state.stats.wins * 1000);
+                document.getElementById('lb-player-val').innerText = curScore;
+                const sorted = [...state.ranks, {name: "SEN", score: curScore}].sort((a,b)=>b.score - a.score);
+                sorted.forEach((p, i) => {
+                    const row = document.createElement('div');
+                    row.className = `flex justify-between p-4 rounded-3xl border border-white/5`;
+                    row.innerHTML = `<span class='text-xs font-black text-gray-500'>#${i+1}</span><span class='text-xs font-bold'>${p.name}</span><span class='text-sm font-mono text-gray-400'>${p.score.toLocaleString()}</span>`;
+                    list.appendChild(row);
+                });
+                m.classList.remove('hidden');
+            } else m.classList.add('hidden');
+        }
+
+        window.onload = boot;
+    </script>
+</body>
+</html>
